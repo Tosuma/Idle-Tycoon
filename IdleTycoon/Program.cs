@@ -265,6 +265,17 @@ public sealed class Game
         UI.Write(_ownedHeaderRow - 1, 2, $"Prestige: {_state.PrestigeCredits} (x{Prestige.ProdMultiplier(_state.PrestigeCredits):0.00})", ConsoleColor.DarkYellow);
         UI.Write(_ownedHeaderRow, 2, "Owned Producers:", ConsoleColor.Cyan);
 
+        // Column headers for owned list
+        // Name(20) | Qty(6 R) | Lv(4 R) | Unit/s(14 R) | Total/s(14 R)
+        UI.Columns(_ownedHeaderRow + 1, 4,
+            ("Name", 20, false),
+            ("Qty", 6, true),
+            ("Lv", 4, true),
+            ("Unit/s", 14, true),
+            ("Total/s", 14, true)
+        );
+        UI.Write(_ownedHeaderRow + 2, 4, new string('─', Math.Min(Console.WindowWidth - 8, 60)), ConsoleColor.DarkGray);
+
         // Bottom menu & divider
         _bottomRow = _height - 4;
         if (_bottomRow < _ownedStartRow + 2) _bottomRow = _ownedStartRow + 2;
@@ -333,8 +344,13 @@ public sealed class Game
             double perUnit = def.BaseProductionPerSecond * levelMult * prestigeMult;
             double itemProd = perUnit * st.Quantity;
 
-            UI.Write(row++, 4,
-                $"- {def.Name} x{st.Quantity} (Lv{st.UpgradeLevel}) → {NumFmt.Format(itemProd)}/s");
+            UI.Columns(row++, 4,
+                (def.Name, 20, false),
+                (st.Quantity.ToString(), 6, true),
+                ($"{st.UpgradeLevel}", 4, true),
+                ($"{NumFmt.Format(perUnit)}", 14, true),
+                ($"{NumFmt.Format(itemProd)}", 14, true)
+            );
         }
     }
 
@@ -348,26 +364,39 @@ public sealed class Game
             UI.WriteCentered(2, $"Money: {NumFmt.Format(_state.Money)}", ConsoleColor.White);
             UI.WriteCentered(3, "↑/↓ select  •  Enter buy  •  B to go back ", ConsoleColor.DarkGray);
 
+            // Headers: Name(20) | Unit/s(14 R) | Price(16 R) | Owned(6 R) | Lv(4 R)
+            int headerRow = 5;
+            UI.Columns(headerRow, 4,
+                ("Name", 20, false),
+                ("Unit/s", 14, true),
+                ("Price", 16, true),
+                ("Owned", 6, true),
+                ("Lv", 4, true));
+            UI.Write(headerRow + 1, 4, new string('─', Math.Min(Console.WindowWidth - 8, 70)), ConsoleColor.DarkGray);
+
             var items = _catalog.All;
-            int startRow = 6;
+            int startRow = headerRow + 3;
             for (int i = 0; i < items.Count; i++)
             {
                 var def = items[i];
                 var st = _state.GetItemState(def.Id);
                 double price = Pricing.CurrentPrice(def, st.Quantity);
-                bool selected = (i == idx);
 
                 double levelMult = Upgrades.MultiplierFor(st.UpgradeLevel);
                 double prestigeMult = Prestige.ProdMultiplier(_state.PrestigeCredits);
                 double perUnitNow = def.BaseProductionPerSecond * levelMult * prestigeMult;
 
+                bool selected = (i == idx);
+                var fg = selected ? ConsoleColor.Black : ConsoleColor.White;
+                var bg = selected ? ConsoleColor.Yellow : (ConsoleColor?)null;
 
-
-                string line = $"{def.Name,-16} (+{NumFmt.Format(perUnitNow, 2)}/s each)  Price: {NumFmt.Format(price)}  Owned: {st.Quantity}  Lv:{st.UpgradeLevel}";
-
-                UI.Write(startRow + i, 4, line,
-                    selected ? ConsoleColor.Black : ConsoleColor.White,
-                    bg: selected ? ConsoleColor.Yellow : (ConsoleColor?)null);
+                UI.Columns(startRow + i, 4, fg, bg,
+                    (def.Name, 20, false),
+                    (NumFmt.Format(perUnitNow, 2), 14, true),
+                    (NumFmt.Format(price), 16, true),
+                    (st.Quantity.ToString(), 6, true),
+                    (st.UpgradeLevel.ToString(), 4, true)
+                );
             }
 
             UI.TickToasts();
@@ -419,7 +448,16 @@ public sealed class Game
             UI.WriteCentered(2, $"Money: {NumFmt.Format(_state.Money)}", ConsoleColor.White);
             UI.WriteCentered(3, "↑/↓ select • Enter upgrade • B to go back", ConsoleColor.DarkGray);
 
-            int startRow = 6;
+            // Headers: Name(20) | Lv(4 R) | Mult(18) | Upgrade(16 R)
+            int headerRow = 5;
+            UI.Columns(headerRow, 4,
+                ("Name", 20, false),
+                ("Lv", 4, true),
+                ("Mult (cur→next)", 18, false),
+                ("Upgrade", 16, true));
+            UI.Write(headerRow + 1, 4, new string('─', Math.Min(Console.WindowWidth - 8, 70)), ConsoleColor.DarkGray);
+
+            int startRow = headerRow + 3;
             for (int i = 0; i < ownedDefs.Count; i++)
             {
                 var def = ownedDefs[i];
@@ -428,11 +466,17 @@ public sealed class Game
                 double currMult = Upgrades.MultiplierFor(lvl);
                 double nextMult = Upgrades.MultiplierFor(lvl + 1);
                 double uPrice = Upgrades.UpgradePrice(def, lvl);
+
                 bool selected = (i == idx);
-                string line = $"{def.Name,-16} Lv:{lvl}  Mult: x{currMult:0.##} → x{nextMult:0.##}  Upgrade: {NumFmt.Format(uPrice)}";
-                UI.Write(startRow + i, 4, line,
-                    selected ? ConsoleColor.Black : ConsoleColor.White,
-                    bg: selected ? ConsoleColor.Yellow : (ConsoleColor?)null);
+                var fg = selected ? ConsoleColor.Black : ConsoleColor.White;
+                var bg = selected ? ConsoleColor.Yellow : (ConsoleColor?)null;
+
+                UI.Columns(startRow + i, 4, fg, bg,
+                    (def.Name, 20, false),
+                    (lvl.ToString(), 4, true),
+                    ($"x{currMult:0.##}→x{nextMult:0.##}", 18, false),
+                    (NumFmt.Format(uPrice), 16, true)
+                );
             }
 
             UI.TickToasts();
@@ -473,9 +517,16 @@ public sealed class Game
         int potential = Prestige.CreditsEarnedNow(_state);
         UI.Clear();
         UI.WriteCentered(1, "Prestige", ConsoleColor.Yellow, bold: true);
-        UI.WriteCentered(3, potential > 0 ? $"You can gain {potential} prestige credit(s)." : "Not enough progress for prestige yet.", ConsoleColor.White);
-        UI.WriteCentered(5, $"Lifetime earnings: {NumFmt.Format(_state.LifetimeEarnings)}", ConsoleColor.Gray);
-        UI.WriteCentered(7, "Enter = Confirm  •  Esc = Cancel", ConsoleColor.DarkGray);
+
+        // Two-column summary: Field(16) | Value
+        int row = 4;
+        UI.Columns(row++, 6, ("Field", 16, false), ("Value", 32, false));
+        UI.Write(row++, 6, new string('─', Math.Min(Console.WindowWidth - 12, 48)), ConsoleColor.DarkGray);
+        UI.Columns(row++, 6, ("Lifetime", 16, false), (NumFmt.Format(_state.LifetimeEarnings), 32, false));
+        UI.Columns(row++, 6, ("Credits", 16, false), (_state.PrestigeCredits.ToString(), 32, false));
+        UI.Columns(row++, 6, ("Now available", 16, false), (potential.ToString(), 32, false));
+        UI.WriteCentered(row + 1, "Enter = Confirm  •  Esc = Cancel", ConsoleColor.DarkGray);
+
         if (potential <= 0)
         {
             Console.ReadKey(true);
@@ -545,7 +596,6 @@ public sealed class Game
             }
             if (key == ConsoleKey.C || key == ConsoleKey.Escape)
             {
-                // Continue in current level (or close)
                 _layoutDirty = true;
                 _ownedListDirty = true;
                 _lastProdDrawn = double.NaN;
@@ -584,7 +634,6 @@ public static class NumFmt
 
     private static string AlphaSuffix(int index)
     {
-        // Map 0 -> "aa", 1 -> "ab", ..., 25 -> "az", 26 -> "ba", etc.
         if (index < 0) return "";
         var chars = new List<char>();
         int n = index;
@@ -796,7 +845,6 @@ public sealed class ItemCatalog
 
     public ItemDef ById(string id) => All.First(x => x.Id == id);
 
-    // Legacy default catalog (not used when Campaign is active)
     public static ItemCatalog Default()
     {
         return new ItemCatalog
@@ -815,7 +863,6 @@ public sealed class ItemCatalog
 
 public static class Pricing
 {
-    // Simple exponential pricing: price(n) = base * multiplier^n
     public static double CurrentPrice(ItemDef def, int owned)
         => def.BaseCost * Math.Pow(def.CostMultiplier, owned);
 }
@@ -868,7 +915,6 @@ public sealed class GameState
             var def = catalog.ById(st.ItemId);
             total += def.BaseProductionPerSecond * st.Quantity * Upgrades.MultiplierFor(st.UpgradeLevel);
         }
-        // Apply permanent prestige multiplier
         total *= Prestige.ProdMultiplier(PrestigeCredits);
         return total;
     }
@@ -928,7 +974,6 @@ public static class UI
         }
         public void Dispose()
         {
-            // Do not clear on exit; let the caller/layout redraw next frame
             Console.ResetColor();
         }
     }
@@ -996,6 +1041,28 @@ public static class UI
         int width = Console.WindowWidth;
         Write(row, 0, new string(' ', Math.Max(0, width - 1)));
     }
+
+    // --- New: simple column renderer -------------------------------------------------
+    // cols: (text, width, rightAlign)
+    public static void Columns(int row, int startCol, params (string text, int width, bool right)[] cols)
+        => Columns(row, startCol, null, null, cols);
+
+    public static void Columns(int row, int startCol, ConsoleColor? fg, ConsoleColor? bg,
+        params (string text, int width, bool right)[] cols)
+    {
+        int col = startCol;
+        foreach (var c in cols)
+        {
+            string cell = c.text ?? "";
+            // truncate
+            if (cell.Length > c.width) cell = cell[..c.width];
+            // pad
+            cell = c.right ? cell.PadLeft(c.width) : cell.PadRight(c.width);
+            Write(row, col, cell, fg, bg);
+            col += c.width + 2; // 2 spaces gap
+        }
+    }
+    // -------------------------------------------------------------------------------
 
     private static void SafeSetPos(int row, int col)
     {
