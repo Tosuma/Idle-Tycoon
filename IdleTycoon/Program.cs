@@ -17,7 +17,6 @@ public static class Program
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         Console.CursorVisible = false;
         Directory.CreateDirectory("saves");
-        var catalog = ItemCatalog.Default();
         var settings = SettingsSystem.Load("saves/settings.json");
 
         while (true)
@@ -27,12 +26,12 @@ public static class Program
             {
                 case StartMenu.Option.NewGame:
                     var newState = GameState.New();
-                    new Game(newState, catalog, settings).Run();
+                    new Game(newState, settings).Run();
                     break;
                 case StartMenu.Option.Continue:
                     var loaded = SaveSystem.TryLoad("saves/slot1.json");
                     if (loaded != null)
-                        new Game(loaded, catalog, settings).Run();
+                        new Game(loaded, settings).Run();
                     else
                         UI.Toast("No save found. Start a new game first.");
                     break;
@@ -98,28 +97,36 @@ public sealed class Game
     private readonly Settings _settings;
     private readonly GameState _state;
 
-    private readonly ItemCatalog _catalog;
+    private ItemCatalog _catalog = new();
 
     // Cached layout positions so we can do partial redraws
     private int _width, _height;
     private int _moneyRow = 1, _moneyCol = 2;
     private int _prodRow = 1, _prodCol;
-    private int _ownedHeaderRow = 4, _ownedStartRow = 6;
+    private int _ownedHeaderRow = 6, _ownedStartRow = 8;
     private int _bottomRow;
 
     // Dirty flags
     private bool _layoutDirty = true;      // window resized or first draw
-    private bool _ownedListDirty = true;   // purchases changed list
+    private bool _ownedListDirty = true;   // purchases/level change changed list
 
     // Last displayed values to avoid redundant writes
     private double _lastMoneyDrawn = double.NaN;
     private double _lastProdDrawn = double.NaN;
 
-    public Game(GameState state, ItemCatalog catalog, Settings settings)
+    public Game(GameState state, Settings settings)
     {
         _state = state;
-        _catalog = catalog;
         _settings = settings;
+        LoadCatalogFromCurrentLevel();
+    }
+
+    private void LoadCatalogFromCurrentLevel()
+    {
+        var level = Campaign.Current(_state);
+        _catalog = new ItemCatalog { All = level.Producers };
+        _ownedListDirty = true;
+        _layoutDirty = true;
     }
 
     public void Run()
@@ -127,26 +134,18 @@ public sealed class Game
         var watch = Stopwatch.StartNew();
         double last = watch.Elapsed.TotalSeconds;
         bool running = true;
-        string AutosaveLabel() => _settings.AutosaveSeconds > 0 ? $"Autosave: {_settings.AutosaveSeconds}s" : "Autosave: Off";
-        var bottomMenu = new[] {
-            "[S]hop", "[U] Upgrades", "[F5] Save", "[P] Prestige", "[Esc] Exit to Menu", "[Space] Collect (if any click mechanic)",
-            _settings.AutosaveSeconds > 0 ? $"Autosave: {_settings.AutosaveSeconds}s" : "Autosave: Off"
-        };
 
         // Initial layout sizing
         _width = Console.WindowWidth;
         _height = Console.WindowHeight;
 
-        DrawStaticHUD(bottomMenu);
+        DrawStaticHUD();
         DrawOwnedList(force: true);
         UpdateMoneyAndProd(force: true);
 
         double autosaveTimer = 0;
         while (running)
         {
-            // If a page cleared the screen on exit (older builds), force a full layout redraw
-            if (Console.CursorLeft == 0 && Console.CursorTop == 0 && !_layoutDirty)
-                _layoutDirty = true;
             // Tick economy
             double now = watch.Elapsed.TotalSeconds;
             double dt = now - last; last = now;
@@ -160,6 +159,13 @@ public sealed class Game
                 UI.Toast($"Autosaved.");
             }
 
+            // Level completion check
+            var lvl = Campaign.Current(_state);
+            if (_state.Money >= lvl.GoalMoney)
+            {
+                OpenLevelCompleteDialog(lvl);
+            }
+
             // Detect resize
             if (_width != Console.WindowWidth || _height != Console.WindowHeight)
             {
@@ -171,7 +177,7 @@ public sealed class Game
             // Redraw layout if needed
             if (_layoutDirty)
             {
-                DrawStaticHUD(bottomMenu);
+                DrawStaticHUD();
                 DrawOwnedList(force: true);
                 UpdateMoneyAndProd(force: true);
                 _layoutDirty = false;
@@ -235,7 +241,7 @@ public sealed class Game
         _state.LifetimeEarnings += perSec * dt;
     }
 
-    private void DrawStaticHUD(string[] bottomMenu)
+    private void DrawStaticHUD()
     {
         UI.Clear();
         _prodCol = Math.Max(0, _width / 2);
@@ -244,6 +250,12 @@ public sealed class Game
         UI.Write(0, 0, new string('─', Math.Max(0, _width - 1)), ConsoleColor.DarkGray);
         UI.Write(_moneyRow, 0, new string(' ', Math.Max(0, _width - 1))); // clear line for fields
         UI.Write(2, 0, new string('─', Math.Max(0, _width - 1)), ConsoleColor.DarkGray);
+
+        // Level & Goal
+        var level = Campaign.Current(_state);
+        string lvlLine = $"Level: {level.Name}   Goal: {NumFmt.Format(level.GoalMoney)}";
+        UI.Write(3, 2, lvlLine, ConsoleColor.White);
+        DrawProgressBar(4, 2, _width - 4, _state.Money, level.GoalMoney);
 
         // Static labels (values filled by UpdateMoneyAndProd)
         UI.Write(_moneyRow, _moneyCol, "Money: ");
@@ -257,8 +269,22 @@ public sealed class Game
         _bottomRow = _height - 4;
         if (_bottomRow < _ownedStartRow + 2) _bottomRow = _ownedStartRow + 2;
         UI.Write(_bottomRow, 0, new string('─', Math.Max(0, _width - 1)), ConsoleColor.DarkGray);
+        var bottomMenu = new[] {
+            "[S]hop", "[U] Upgrades", "[F5] Save", "[P] Prestige", "[Esc] Exit to Menu", "[Space] Collect (if any click mechanic)",
+            _settings.AutosaveSeconds > 0 ? $"Autosave: {_settings.AutosaveSeconds}s" : "Autosave: Off"
+        };
         UI.Write(_bottomRow + 1, 2, string.Join("   ", bottomMenu));
         UI.Write(_bottomRow + 2, 2, "Tip: Prices scale with each purchase. Use arrows + Enter in the Shop.", ConsoleColor.DarkGray);
+    }
+
+    private void DrawProgressBar(int row, int col, int width, double value, double goal)
+    {
+        width = Math.Max(20, width);
+        double pct = Math.Clamp(goal <= 0 ? 0 : value / goal, 0, 1);
+        int inner = Math.Max(10, width - 12);
+        int filled = (int)Math.Round(inner * pct);
+        string bar = "[" + new string('█', filled) + new string('░', Math.Max(0, inner - filled)) + $"] {pct * 100:0.0}%";
+        UI.Write(row, col, bar, ConsoleColor.Gray);
     }
 
     private void UpdateMoneyAndProd(bool force)
@@ -268,7 +294,6 @@ public sealed class Game
 
         if (force || !NearlyEqual(money, _lastMoneyDrawn))
         {
-            // Fixed-width fields to overwrite prior text without clearing whole line
             UI.WriteField(_moneyRow, _moneyCol + 7, NumFmt.Format(money), 16);
             _lastMoneyDrawn = money;
         }
@@ -311,7 +336,6 @@ public sealed class Game
             UI.Write(row++, 4,
                 $"- {def.Name} x{st.Quantity} (Lv{st.UpgradeLevel}) → {NumFmt.Format(itemProd)}/s");
         }
-
     }
 
     private void OpenShop()
@@ -333,13 +357,13 @@ public sealed class Game
                 double price = Pricing.CurrentPrice(def, st.Quantity);
                 bool selected = (i == idx);
 
-                // 
                 double levelMult = Upgrades.MultiplierFor(st.UpgradeLevel);
                 double prestigeMult = Prestige.ProdMultiplier(_state.PrestigeCredits);
                 double perUnitNow = def.BaseProductionPerSecond * levelMult * prestigeMult;
 
-                string line = $"{def.Name,-16} (+{NumFmt.Format(perUnitNow, 2)}/s each)  Price: {NumFmt.Format(price)}  Owned: {st.Quantity}  Lv:{st.UpgradeLevel}";
 
+
+                string line = $"{def.Name,-16} (+{NumFmt.Format(perUnitNow, 2)}/s each)  Price: {NumFmt.Format(price)}  Owned: {st.Quantity}  Lv:{st.UpgradeLevel}";
 
                 UI.Write(startRow + i, 4, line,
                     selected ? ConsoleColor.Black : ConsoleColor.White,
@@ -455,7 +479,6 @@ public sealed class Game
         if (potential <= 0)
         {
             Console.ReadKey(true);
-            // Ensure main HUD fully redraws when returning
             _ownedListDirty = true;
             _lastProdDrawn = double.NaN;
             _layoutDirty = true;
@@ -480,6 +503,52 @@ public sealed class Game
                 _ownedListDirty = true;
                 _lastProdDrawn = double.NaN;
                 _layoutDirty = true;
+                return;
+            }
+        }
+    }
+
+    private void OpenLevelCompleteDialog(LevelDef level)
+    {
+        using var __page = UI.Page();
+        UI.WriteCentered(1, "Level Complete!", ConsoleColor.Green, bold: true);
+        UI.WriteCentered(3, $"You reached the goal for '{level.Name}'.", ConsoleColor.White);
+
+        var next = Campaign.Next(_state);
+        if (next != null)
+        {
+            UI.WriteCentered(5, $"Next: {next.Name}", ConsoleColor.Cyan);
+            UI.WriteCentered(7, "[Enter] Advance   •   [C] Continue here   •   [Esc] Cancel", ConsoleColor.DarkGray);
+        }
+        else
+        {
+            UI.WriteCentered(5, "This is the last level in the campaign (for now).", ConsoleColor.Cyan);
+            UI.WriteCentered(7, "[C] Continue here   •   [Esc] Close", ConsoleColor.DarkGray);
+        }
+
+        while (true)
+        {
+            UI.TickToasts();
+            var key = Console.ReadKey(true).Key;
+
+            if (key == ConsoleKey.Enter && next != null)
+            {
+                // Advance: unlock & switch, reset run state
+                _state.UnlockedLevels.Add(next.Id);
+                _state.CurrentLevelId = next.Id;
+                _state.Money = 0;
+                _state.Items.Clear();
+                LoadCatalogFromCurrentLevel();
+                SaveSystem.Save(_state, "saves/slot1.json");
+                UI.Toast($"Advanced to {next.Name}!");
+                return;
+            }
+            if (key == ConsoleKey.C || key == ConsoleKey.Escape)
+            {
+                // Continue in current level (or close)
+                _layoutDirty = true;
+                _ownedListDirty = true;
+                _lastProdDrawn = double.NaN;
                 return;
             }
         }
@@ -526,7 +595,6 @@ public static class NumFmt
             n /= 26;
         } while (n > 0);
         chars.Reverse();
-        // Ensure at least 2 characters by left-padding with 'a'
         while (chars.Count < 2) chars.Insert(0, 'a');
         return new string(chars.ToArray());
     }
@@ -582,7 +650,6 @@ public static class SettingsMenu
 
         while (true)
         {
-            // Full redraw each loop so the displayed value always reflects current selection
             UI.Clear();
             UI.WriteCentered(1, "Settings", ConsoleColor.Cyan, bold: true);
             UI.WriteCentered(3, "Use ←/→ to change. Enter to confirm. Esc to return.", ConsoleColor.DarkGray);
@@ -590,7 +657,6 @@ public static class SettingsMenu
             string val = Choices[idx] == 0 ? "Off" : Choices[idx] + "s";
             UI.WriteCentered(6, $"Autosave interval: {val}", ConsoleColor.White);
 
-            // Read input
             UI.TickToasts();
             var key = Console.ReadKey(true).Key;
             if (key == ConsoleKey.LeftArrow) { idx = (idx - 1 + Choices.Length) % Choices.Length; continue; }
@@ -653,6 +719,74 @@ public static class Upgrades
 }
 #endregion
 
+#region Levels & Campaign
+public record LevelDef(string Id, string Name, double GoalMoney, List<ItemDef> Producers);
+
+public static class Campaign
+{
+    public static readonly List<LevelDef> Levels = new()
+    {
+        new("lvl1", "Desert Outskirts", 1_000_000, new()
+        {
+            new("vaporator","Moisture Vaporator",10,1.15,0.10),
+            new("junkdroid","Salvage Droid",60,1.15,0.70),
+            new("landspeeder","Landspeeder Runs",600,1.15,6),
+            new("cantina","Cantina Stalls",6_000,1.15,45),
+            new("freighter","Small Freighter",60_000,1.15,300),
+        }),
+        new("lvl2", "Spaceport Fringe", 50_000_000, new()
+        {
+            new("droidshop","Droid Workshop",200,1.15,1.8),
+            new("hangar","Hangar Bay",2_000,1.15,14),
+            new("market","Bazaar Network",20_000,1.15,95),
+            new("courier","Courier Routes",200_000,1.15,620),
+            new("guild","Guild Contracts",2_000_000,1.15,4_000),
+        }),
+        new("lvl3", "Rebel Outpost", 2_000_000_000, new()
+        {
+            new("lookout","Lookout Posts",1_000,1.15,3.5),
+            new("comms","Comms Relay",10_000,1.15,26),
+            new("cells","Rebel Cells",100_000,1.15,180),
+            new("supply","Supply Lines",1_000_000,1.15,1_150),
+            new("wing","Starfighter Wing",10_000_000,1.15,7_200),
+        }),
+        new("lvl4", "Icy Holdfast", 80_000_000_000, new()
+        {
+            new("patrol","Perimeter Patrols",6_000,1.15,20),
+            new("shield","Field Generators",60_000,1.15,140),
+            new("depot","Supply Depot",600_000,1.15,980),
+            new("hanger","Heavy Hangars",6_000_000,1.15,6_600),
+            new("convoy","Convoy Command",60_000_000,1.15,45_000),
+        }),
+        new("lvl5", "Cloud Mines", 3_000_000_000_000, new()
+        {
+            new("lift","Gas Lifters",30_000,1.15,70),
+            new("refine","Refinery Lines",300_000,1.15,500),
+            new("trade","Trade Consortium",3_000_000,1.15,3_400),
+            new("harbor","Sky Harbor",30_000_000,1.15,22_000),
+            new("charter","Charter Fleets",300_000_000,1.15,150_000),
+        }),
+        new("lvl6", "Capital Shipyards", 120_000_000_000_000, new()
+        {
+            new("drydock","Drydock Crews",150_000,1.15,300),
+            new("frames","Hull Frames",1_500_000,1.15,2_100),
+            new("yards","Orbital Yards",15_000_000,1.15,14_000),
+            new("fleets","Fleet Logistics",150_000_000,1.15,95_000),
+            new("capital","Capital Lines",1_500_000_000,1.15,650_000),
+        }),
+    };
+
+    public static LevelDef Current(GameState s)
+        => Levels.First(l => l.Id == s.CurrentLevelId);
+
+    public static LevelDef? Next(GameState s)
+    {
+        var i = Levels.FindIndex(l => l.Id == s.CurrentLevelId);
+        return (i >= 0 && i < Levels.Count - 1) ? Levels[i + 1] : null;
+    }
+}
+#endregion
+
 #region Domain Model & Economy
 public record ItemDef(string Id, string Name, double BaseCost, double CostMultiplier, double BaseProductionPerSecond);
 
@@ -662,6 +796,7 @@ public sealed class ItemCatalog
 
     public ItemDef ById(string id) => All.First(x => x.Id == id);
 
+    // Legacy default catalog (not used when Campaign is active)
     public static ItemCatalog Default()
     {
         return new ItemCatalog
@@ -693,6 +828,9 @@ public sealed class GameState
     public int PrestigeCredits { get; set; } = 0;
     public int PrestigeCreditsEarnedHistorical { get; set; } = 0; // bookkeeping so we only award new credits
 
+    public string CurrentLevelId { get; set; } = "lvl1";
+    public HashSet<string> UnlockedLevels { get; set; } = new() { "lvl1" };
+
     public List<ItemState> Items { get; set; } = new();
 
     public static GameState New()
@@ -704,6 +842,8 @@ public sealed class GameState
             Prestiges = 0,
             PrestigeCredits = 0,
             PrestigeCreditsEarnedHistorical = 0,
+            CurrentLevelId = "lvl1",
+            UnlockedLevels = new HashSet<string> { "lvl1" },
             Items = new List<ItemState>()
         };
     }
