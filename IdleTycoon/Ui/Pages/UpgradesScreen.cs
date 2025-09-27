@@ -63,7 +63,7 @@ public static class UpgradesScreen
 
             UI.TickToasts();
             var key = Console.ReadKey(true).Key;
-            if (key is Console.U or ConsoleKey.B or ConsoleKey.Escape)
+            if (key is ConsoleKey.U or ConsoleKey.B or ConsoleKey.Escape)
                 return true;
             if (key is ConsoleKey.UpArrow)
                 idx = (idx - 1 + ownedDefs.Count) % ownedDefs.Count;

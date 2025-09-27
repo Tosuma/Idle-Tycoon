@@ -22,7 +22,6 @@ public static class UI
         SafeSetPos(row, col);
         if (bg.HasValue) Console.BackgroundColor = bg.Value;
         if (fg.HasValue) Console.ForegroundColor = fg.Value;
-        
         Console.Write(text);
         Console.ResetColor();
     }
