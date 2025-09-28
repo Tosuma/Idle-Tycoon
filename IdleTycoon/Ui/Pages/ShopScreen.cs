@@ -52,7 +52,7 @@ public static class ShopScreen
                 var fg = selected ? ConsoleColor.Black : ConsoleColor.White;
                 var bg = selected ? ConsoleColor.Yellow : (ConsoleColor?)null;
 
-                UI.Columns(startRow + i, windowPadding, fg, bg,
+                UI.Columns(startRow + i, windowPadding, fg, bg, TextStyle.None,
                     (def.Name, 20, false),
                     (NumFmt.Format(perUnitNow, 2), 14, true),
                     (NumFmt.Format(price), 16, true),

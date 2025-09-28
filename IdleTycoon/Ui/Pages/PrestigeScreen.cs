@@ -30,7 +30,7 @@ public static class PrestigeScreen
         UI.Columns(row++, 6, ("Now available", 16, false), (potential.ToString(), 32, false));
 
         UI.Columns(row++, 6, ("Next target", 16, false), (NumFmt.Format(target), 32, false));
-        UI.Columns(row++, 6, ConsoleColor.DarkGray, ("Remaining", 16, false), (NumFmt.Format(remaining), 32, false));
+        UI.Columns(row++, 6, ConsoleColor.DarkGray, TextStyle.Italic, ("Remaining", 16, false), (NumFmt.Format(remaining), 32, false));
 
         UI.WriteCentered(row + 1, "Enter = Confirm  •  Esc = Cancel", ConsoleColor.DarkGray);
 
@@ -44,14 +44,14 @@ public static class PrestigeScreen
         {
             UI.TickToasts();
             var key = Console.ReadKey(true).Key;
-            if (key is ConsoleKey.P or ConsoleKey.Enter)
+            if (key is ConsoleKey.Enter)
             {
                 Prestige.ApplyReset(state);
                 SaveSystem.Save(state, "saves/slot1.json");
                 UI.Toast("Prestiged! Production boosted.");
                 return;
             }
-            if (key is ConsoleKey.Escape)
+            if (key is ConsoleKey.P or ConsoleKey.Escape)
             {
                 return;
             }

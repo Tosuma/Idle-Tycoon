@@ -14,8 +14,10 @@ public static class Program
 {
     public static void Main()
     {
+        UI.Init(); // enable ANSI/VT if possible
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         Console.CursorVisible = false;
+
         Directory.CreateDirectory("saves");
         var settings = SettingsSystem.Load("saves/settings.json");
 

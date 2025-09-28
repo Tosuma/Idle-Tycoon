@@ -53,7 +53,7 @@ public static class UpgradesScreen
                 var fg = selected ? ConsoleColor.Black : ConsoleColor.White;
                 var bg = selected ? ConsoleColor.Yellow : (ConsoleColor?)null;
 
-                UI.Columns(startRow + i, windowPadding, fg, bg,
+                UI.Columns(startRow + i, windowPadding, fg, bg, TextStyle.None,
                     (def.Name, 20, false),
                     (lvl.ToString(), 4, true),
                     ($"x{currMult:0.##}→x{nextMult:0.##}", 18, false),
