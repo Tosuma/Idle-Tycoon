@@ -62,7 +62,9 @@ public static class Campaign
     public static LevelDef? Next(GameState s)
     {
         var i = Levels.FindIndex(l => l.Id == s.CurrentLevelId);
-        return i >= 0 && i < Levels.Count - 1 ? Levels[i + 1] : null;
+        return i >= 0 && i < Levels.Count - 1 
+            ? Levels[i + 1] 
+            : null;
     }
 
     public static LevelDef ResetToFirstLevel(GameState s)
@@ -72,5 +74,25 @@ public static class Campaign
         s.UnlockedLevels.Clear();
         s.UnlockedLevels.Add(first.Id);
         return first;
+    }
+
+    public static void ProgressToNextLevel(GameState s)
+    {
+        var next = Next(s);
+        // Advance: unlock & switch, reset run state
+        if (next is not null)
+        {
+            s.UnlockedLevels.Add(next.Id);
+            s.CurrentLevelId = next.Id;
+            s.Money = 0;
+            s.Items.Clear();
+            var lowestProducer = Current(s).Producers.FirstOrDefault();
+            if (lowestProducer is not null)
+            {
+                var st = s.GetItemState(lowestProducer.Id);
+                st.Quantity = 1;
+            }
+        }
+
     }
 }

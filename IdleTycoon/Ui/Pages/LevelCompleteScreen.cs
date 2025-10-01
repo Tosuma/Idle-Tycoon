@@ -38,10 +38,7 @@ public static class LevelCompleteScreen
             if (key is ConsoleKey.Enter && next is not null)
             {
                 // Advance: unlock & switch, reset run state
-                state.UnlockedLevels.Add(next.Id);
-                state.CurrentLevelId = next.Id;
-                state.Money = 0;
-                state.Items.Clear();
+                Campaign.ProgressToNextLevel(state);
                 SaveSystem.Save(state, "saves/slot1.json");
                 UI.Toast($"Advanced to {next.Name}!");
                 return true;
