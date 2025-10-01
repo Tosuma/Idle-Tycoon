@@ -35,9 +35,15 @@ public static class UpgradesScreen
             UI.Columns(headerRow, windowPadding,
                 ("Name", 20, false),
                 ("Lv", 4, true),
+                ("Prod (cur→next)", 18, false),
                 ("Mult (cur→next)", 18, false),
                 ("Upgrade", 16, true));
-            UI.Write(headerRow + 1, windowPadding, new string('─', Math.Min(Console.WindowWidth - (windowPadding * 2), 70)), ConsoleColor.DarkGray);
+            UI.Write(
+                headerRow + 1,
+                windowPadding,
+                new string('─', Math.Min(Console.WindowWidth - (windowPadding * 2), 84)), 
+                ConsoleColor.DarkGray
+            );
 
             int startRow = headerRow + 3;
             for (int i = 0; i < ownedDefs.Count; i++)
@@ -45,6 +51,11 @@ public static class UpgradesScreen
                 var def = ownedDefs[i];
                 var st = state.GetItemState(def.Id);
                 int lvl = st.UpgradeLevel;
+                double prestigeMult = Prestige.ProdMultiplier(state.PrestigeCredits);
+
+                double currProd = def.BaseProductionPerSecond * Upgrades.MultiplierFor(lvl) * prestigeMult;
+                double nextProd = def.BaseProductionPerSecond * Upgrades.MultiplierFor(lvl + 1) * prestigeMult;
+
                 double currMult = Upgrades.MultiplierFor(lvl);
                 double nextMult = Upgrades.MultiplierFor(lvl + 1);
                 double uPrice = Upgrades.UpgradePrice(def, lvl);
@@ -56,6 +67,7 @@ public static class UpgradesScreen
                 UI.Columns(startRow + i, windowPadding, fg, bg, TextStyle.None,
                     (def.Name, 20, false),
                     (lvl.ToString(), 4, true),
+                    ($"{NumFmt.Format(currProd)}→{NumFmt.Format(nextProd)}", 18, false),
                     ($"x{currMult:0.##}→x{nextMult:0.##}", 18, false),
                     (NumFmt.Format(uPrice), 16, true)
                 );
