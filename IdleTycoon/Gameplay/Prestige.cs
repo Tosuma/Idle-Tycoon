@@ -69,8 +69,6 @@ public static class Prestige
         s.PrestigeCredits += earned;
         s.PrestigeCreditsEarnedHistorical += earned;
         s.Prestiges += 1;
-        s.Money = 0;
-        s.Items.Clear();
         Campaign.ResetToFirstLevel(s);
         return earned;
     }

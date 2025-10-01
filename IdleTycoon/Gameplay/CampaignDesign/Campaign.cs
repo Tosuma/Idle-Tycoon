@@ -73,6 +73,11 @@ public static class Campaign
         s.CurrentLevelId = first.Id;
         s.UnlockedLevels.Clear();
         s.UnlockedLevels.Add(first.Id);
+        s.Money = 0;
+        s.Items.Clear();
+
+        var st = s.GetItemState(Levels[0].Id);
+        st.Quantity = 1;
         return first;
     }
 
